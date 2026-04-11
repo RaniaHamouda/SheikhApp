@@ -130,16 +130,16 @@ async function startApp() {
   window.currentParentId = null;
   window.activeSubCategoryName = null;
 
-  // منع المتصفح من ملء خانة البحث تلقائياً بإيميل الأدمن
-  const searchInputs = document.querySelectorAll(
-    'input[type="text"], input[type="search"]',
-  );
-  searchInputs.forEach((input) => {
-    if (input.getAttribute("oninput")?.includes("searchProducts")) {
-      input.value = "";
-      input.setAttribute("autocomplete", "new-password"); // استخدام new-password غالباً ما يكسر التعرف التلقائي للمتصفح
+  // منع المتصفح من ملء خانة البحث تلقائياً ببيانات الحساب المحفوظة
+  setTimeout(() => {
+    const searchInput = document.getElementById("search-input");
+    if (searchInput) {
+      searchInput.value = "";
+      searchInput.setAttribute("autocomplete", "off");
+      searchInput.setAttribute("readonly", "true");
+      searchInput.blur(); // سحب التركيز لمنع المتصفح من عرض المقترحات فوراً
     }
-  });
+  }, 500);
 
   // عرض المنتجات والأقسام للجميع حتى لو لم يسجل الدخول
   if (!unsubs.categories) unsubs.categories = listenToCategories();
@@ -235,7 +235,7 @@ async function initializeDefaultCategories() {
       { name: "البقالة", img: "", parentId: "" },
       { name: "المنظفات", img: "", parentId: "" },
       { name: "المشروبات", img: "", parentId: "" },
-      { name: "أدوات منزلية", img: "", parentId: "" },
+      // { name: "أدوات منزلية", img: "", parentId: "" },
     ];
 
     const categoriesRef = window.firestoreUtils.collection(
@@ -387,6 +387,21 @@ function listenToAuth() {
         document.getElementById("profile-role").innerText = "مدير النظام";
         document.getElementById("profile-role").className =
           "text-[11px] text-amber-500 font-black mb-1";
+
+        const addAdminContainer = document.getElementById(
+          "add-admin-container",
+        );
+        if (addAdminContainer) {
+          if (
+            user.email &&
+            typeof PRIMARY_ADMIN_EMAIL !== "undefined" &&
+            user.email.toLowerCase() === PRIMARY_ADMIN_EMAIL.toLowerCase()
+          ) {
+            addAdminContainer.classList.remove("hidden");
+          } else {
+            addAdminContainer.classList.add("hidden");
+          }
+        }
 
         if (unsubs.myOrders) {
           unsubs.myOrders();
@@ -962,7 +977,7 @@ function renderAdminProducts() {
                 <div class="truncate">
                     <p class="font-black text-sm text-slate-800 truncate">${p.name}</p>
                     <p class="text-emerald-500 text-xs font-bold mt-1">${p.price} ج.م/${p.unit || "قطعة"} <span class="text-slate-400 font-normal">| ${p.category || "بدون قسم"}</span></p>
-                    <p class="text-slate-400 text-[10px] font-bold">الأدنى: ${p.minOrderQuantity || 1} | الأقصى: ${p.maxOrderQuantity || "∞"} | المخزون: ${p.stock || 0}</p>
+                    <p class="text-slate-400 text-[10px] font-bold"> الأدنى: ${p.minOrderQuantity || 1} | الأقصى: ${p.maxOrderQuantity || "∞"} | المخزون: ${p.stock || 0}</p>
                 </div>
             </div>
             <div class="flex gap-2">
@@ -1183,7 +1198,7 @@ async function confirmOrder(orderId) {
   const originalHtml = btn ? btn.innerHTML : ""; // Ensure btn is not null
 
   if (btn) {
-    btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> جاري...`;
+    btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> جاري.. .`;
     btn.disabled = true;
   }
   lucide.createIcons();
@@ -1270,6 +1285,11 @@ function updateCategorySelects() {
     categories
       .map((c) => `<option value="${c.name}">${c.name}</option>`)
       .join("");
+  const bulkPriceOptions =
+    '<option value="">-- كل الأقسام (تحديث شامل) --</option>' +
+    categories
+      .map((c) => `<option value="${c.name}">${c.name}</option>`)
+      .join("");
   if (select) {
     select.innerHTML = options;
     if (currentVal) select.value = currentVal;
@@ -1279,7 +1299,7 @@ function updateCategorySelects() {
     if (currentBulk) bulkSelect.value = currentBulk;
   }
   if (bulkPriceSelect) {
-    bulkPriceSelect.innerHTML = options;
+    bulkPriceSelect.innerHTML = bulkPriceOptions;
     if (currentBulkPrice) bulkPriceSelect.value = currentBulkPrice;
   }
 }
@@ -1768,47 +1788,71 @@ function parseBulkPriceData(text) {
     .map((line) => line.trim())
     .filter((line) => line);
   const priceUpdates = [];
-  for (const row of rows) {
-    const cells = row
-      .split(/,|\t|\|/)
-      .map((cell) => cell.trim())
-      .filter((cell) => cell);
-    if (cells.length < 2) continue;
+  if (rows.length === 0) return priceUpdates;
 
+  const separators = [",", "\t", "|", ";"];
+  let sep = ",";
+  let maxFields = 0;
+  separators.forEach((s) => {
+    const count = rows[0].split(s).length;
+    if (count > maxFields) {
+      maxFields = count;
+      sep = s;
+    }
+  });
+
+  rows.forEach((line) => {
+    const cells = line
+      .split(sep)
+      .map((c) => c.trim())
+      .filter((c) => c !== "");
+    if (cells.length < 2) return;
+
+    let price = 0;
+    let potentialNames = [];
     let code = "";
-    let name = "";
-    let price = NaN;
-    let category = "";
 
-    if (cells.length === 2) {
-      name = cells[0];
-      price = Number(cells[1].replace(/[^0-9.]/g, ""));
-    } else if (cells.length === 3) {
-      const secondIsNumber = !isNaN(Number(cells[1].replace(/[^0-9.]/g, "")));
-      const thirdIsNumber = !isNaN(Number(cells[2].replace(/[^0-9.]/g, "")));
-      if (secondIsNumber && !thirdIsNumber) {
-        name = cells[0];
-        price = Number(cells[1].replace(/[^0-9.]/g, ""));
-        category = cells[2];
-      } else if (!secondIsNumber && thirdIsNumber) {
-        code = cells[0];
-        name = cells[1];
-        price = Number(cells[2].replace(/[^0-9.]/g, ""));
-      } else {
-        name = cells[0];
-        price = Number(cells[1].replace(/[^0-9.]/g, ""));
-        category = cells[2];
+    cells.forEach((cell) => {
+      const hasLetters = /[a-zA-Z\u0600-\u06FF]/.test(cell);
+      const num = parseFloat(cell.replace(/[^0-9.]/g, ""));
+      const isLongCode = !hasLetters && cell.replace(/[^0-9]/g, "").length >= 4;
+
+      if (isLongCode && code === "") {
+        code = cell;
+      } else if (!hasLetters && !isNaN(num) && num > 0 && price === 0) {
+        price = num;
+      } else if (hasLetters) {
+        potentialNames.push(cell);
       }
-    } else {
-      code = cells[0];
-      name = cells[1];
-      price = Number(cells[2].replace(/[^0-9.]/g, ""));
-      category = cells[3] || "";
+    });
+
+    if (price === 0 && potentialNames.length > 0) {
+      // Fallback: the price cell might have letters like "10 ج.م" or "10 EGP"
+      for (let i = potentialNames.length - 1; i >= 0; i--) {
+        let pName = potentialNames[i];
+        let pNum = parseFloat(pName.replace(/[^0-9.]/g, ""));
+        if (!isNaN(pNum) && pNum > 0) {
+          price = pNum;
+          potentialNames.splice(i, 1);
+          break;
+        }
+      }
     }
 
-    if (!name || isNaN(price) || price <= 0) continue;
-    priceUpdates.push({ code, name, price, category });
-  }
+    let name = "";
+    let category = "";
+    if (potentialNames.length > 0) {
+      name = potentialNames.reduce((a, b) => (a.length > b.length ? a : b));
+      if (potentialNames.length > 1) {
+        const others = potentialNames.filter((n) => n !== name);
+        category = others[0];
+      }
+    }
+
+    if (name && price > 0) {
+      priceUpdates.push({ code, name, price, category });
+    }
+  });
   return priceUpdates;
 }
 
@@ -1851,8 +1895,14 @@ async function saveBulkPriceUpdates() {
     document.getElementById("bulk-price-percentage").value,
   );
 
-  if (!categoryFilter) {
-    alert("يرجى اختيار القسم أولاً.");
+  if (!rawPriceData && isNaN(percentageIncrease)) {
+    alert("يرجى لصق/رفع بيانات الأسعار، أو إدخال نسبة مئوية للزيادة.");
+    return;
+  }
+  if (!rawPriceData && !categoryFilter && !isNaN(percentageIncrease)) {
+    alert(
+      "يرجى اختيار القسم لتطبيق نسبة الزيادة المئوية عليه، أو رفع ملف لتحديث الأسعار في كل المتجر.",
+    );
     return;
   }
 
@@ -1872,11 +1922,13 @@ async function saveBulkPriceUpdates() {
       "data",
       "products",
     );
-    const productsToUpdate = products.filter(
-      (p) =>
-        (p.category || "").toLowerCase().trim() ===
-        categoryFilter.toLowerCase().trim(),
-    );
+    const productsToUpdate = categoryFilter
+      ? products.filter(
+          (p) =>
+            (p.category || "").toLowerCase().trim() ===
+            categoryFilter.toLowerCase().trim(),
+        )
+      : products;
 
     if (rawPriceData) {
       // Case 1: Update prices from pasted data
@@ -1892,22 +1944,26 @@ async function saveBulkPriceUpdates() {
 
       const productsMapByCode = new Map();
       const productsMapByNameCategory = new Map();
-      const productsMapByName = new Map();
+      const productsMapByName = new Map(); // Will map name => array of products
       productsToUpdate.forEach((p) => {
         if (p.code) {
-          productsMapByCode.set(p.code.toLowerCase().trim(), p);
+          const codeKey = p.code.toLowerCase().trim();
+          if (!productsMapByCode.has(codeKey))
+            productsMapByCode.set(codeKey, []);
+          productsMapByCode.get(codeKey).push(p);
         }
         const nameKey = p.name.toLowerCase().trim();
         const categoryKey = `${nameKey}|${(p.category || "").toLowerCase().trim()}`;
+
         if (!productsMapByNameCategory.has(categoryKey)) {
-          productsMapByNameCategory.set(categoryKey, p);
+          productsMapByNameCategory.set(categoryKey, []);
         }
+        productsMapByNameCategory.get(categoryKey).push(p);
+
         if (!productsMapByName.has(nameKey)) {
-          productsMapByName.set(nameKey, p);
-        } else {
-          // Mark as not unique if multiple products have the same name in the filtered category
-          productsMapByName.set(nameKey, null);
+          productsMapByName.set(nameKey, []);
         }
+        productsMapByName.get(nameKey).push(p);
       });
 
       parsedPriceUpdates.forEach((update) => {
@@ -1915,29 +1971,37 @@ async function saveBulkPriceUpdates() {
         const updateCategory =
           update.category && update.category.trim()
             ? update.category.toLowerCase().trim()
-            : categoryFilter.toLowerCase().trim();
+            : categoryFilter
+              ? categoryFilter.toLowerCase().trim()
+              : "";
         const keyCategory = `${keyName}|${updateCategory}`;
-        let product = null;
+        let targetProducts = [];
 
-        if (update.code) {
-          product = productsMapByCode.get(update.code.toLowerCase().trim());
-        }
-        if (!product) {
-          product = productsMapByNameCategory.get(keyCategory);
-        }
-        if (!product) {
-          const uniqueByName = productsMapByName.get(keyName);
-          if (uniqueByName && uniqueByName !== null) {
-            product = uniqueByName;
-          }
+        if (
+          update.code &&
+          productsMapByCode.has(update.code.toLowerCase().trim())
+        ) {
+          targetProducts = productsMapByCode.get(
+            update.code.toLowerCase().trim(),
+          );
+        } else if (
+          updateCategory &&
+          productsMapByNameCategory.has(keyCategory)
+        ) {
+          targetProducts = productsMapByNameCategory.get(keyCategory);
+        } else if (productsMapByName.has(keyName)) {
+          targetProducts = productsMapByName.get(keyName);
         }
 
-        if (product) {
-          updates.push({
-            id: product.id,
-            name: product.name,
-            oldPrice: product.price,
-            newPrice: update.price,
+        if (targetProducts.length > 0) {
+          targetProducts.forEach((product) => {
+            updates.push({
+              id: product.id,
+              name: product.name,
+              category: product.category,
+              oldPrice: product.price,
+              newPrice: update.price,
+            });
           });
         } else {
           notFound.push(
@@ -1945,10 +2009,10 @@ async function saveBulkPriceUpdates() {
           );
         }
       });
-    } else if (!isNaN(percentageIncrease) && percentageIncrease > 0) {
+    } else if (!isNaN(percentageIncrease) && percentageIncrease !== 0) {
       // Case 2: Apply percentage increase to all products in the selected category
       if (productsToUpdate.length === 0) {
-        alert("لا توجد منتجات في هذا القسم لتطبيق الزيادة المئوية عليها.");
+        alert("لا توجد منتجات لتطبيق الزيادة المئوية عليها.");
         btn.innerText = originalText;
         btn.disabled = false;
         return;
@@ -1958,48 +2022,31 @@ async function saveBulkPriceUpdates() {
         updates.push({
           id: p.id,
           name: p.name,
+          category: p.category,
           oldPrice: p.price,
           newPrice: newPrice,
         });
       });
-    } else {
-      alert(
-        "يرجى لصق بيانات الأسعار من الملف أو النص، أو إدخال نسبة مئوية للزيادة.",
-      );
-      btn.innerText = originalText;
-      btn.disabled = false;
-      return;
     }
 
     if (updates.length === 0) {
-      alert("لم يتم العثور على أي منتجات مطابقة في هذا القسم.");
-      return;
-    }
-
-    // عرض ملخص التحديثات
-    let summary = `سيتم تحديث ${updates.length} منتج في قسم "${categoryFilter}":\n\n`;
-    updates.forEach((u) => {
-      summary += `${u.name}: ${u.oldPrice} → ${u.newPrice} ج.م\n`;
-    });
-    if (notFound.length > 0) {
-      summary += `\nالمنتجات غير الموجودة (${notFound.length}):\n${notFound.join(", ")}`;
-    }
-
-    if (!confirm(summary + "\n\nهل تريد المتابعة؟")) {
-      return;
-    }
-
-    if (updates.length === 0) {
-      alert("لم يتم العثور على أي منتجات مطابقة في هذا القسم لتحديثها.");
+      alert("لم يتم العثور على أي منتجات مطابقة لتحديثها.");
       btn.innerText = originalText;
       btn.disabled = false;
       return;
     }
 
     // Display summary
-    summary = `سيتم تحديث ${updates.length} منتج في قسم "${categoryFilter}":\n\n`;
+    const catDisplayName = categoryFilter
+      ? `قسم "${categoryFilter}"`
+      : "سائر الأقسام";
+    let summary = `سيتم تحديث ${updates.length} منتج في ${catDisplayName}:\n\n`;
+
+    // Sort array so it's grouped somewhat nicely
     updates.forEach((u) => {
-      summary += `${u.name}: ${u.oldPrice.toFixed(2)} → ${u.newPrice.toFixed(2)} ج.م\n`;
+      const oldP = Number(u.oldPrice || 0);
+      const newP = Number(u.newPrice || 0);
+      summary += `${u.name} ${u.category ? "(" + u.category + ")" : ""}: ${oldP.toFixed(2)} → ${newP.toFixed(2)} ج.م\n`;
     });
     if (notFound.length > 0) {
       summary += `\nالمنتجات غير الموجودة (${notFound.length}):\n${notFound.join(", ")}`;
@@ -2409,8 +2456,11 @@ function renderCart() {
       )
       .join("");
 
-    document.getElementById("subtotal").innerText = total + " ج.م";
-    document.getElementById("total").innerText = total;
+    const subtotalElem = document.getElementById("subtotal");
+    if (subtotalElem) subtotalElem.innerText = total + " ج.م";
+
+    const totalElem = document.getElementById("total");
+    if (totalElem) totalElem.innerText = total;
   }
   lucide.createIcons();
 }
@@ -2456,6 +2506,27 @@ async function placeOrder() {
   ).value;
 
   if (!name || !phone || !addr) return alert("يرجى إكمال بيانات التوصيل كاملة");
+
+  if (!coords) {
+    alert(
+      "يرجى تحديد موقعك باستخدام زر (حدد موقعي GPS) المتواجد بجوار حقل العنوان للتأكد من تغطية التوصيل.",
+    );
+    return;
+  }
+
+  const [lat, lon] = coords.split(",").map(Number);
+  const isAdmin =
+    currentUser &&
+    !currentUser.isAnonymous &&
+    window.currentUserRole === "admin";
+
+  // Bounding box for Greater Cairo (approx)
+  if (!isAdmin && (lat < 29.7 || lat > 30.3 || lon < 30.8 || lon > 31.8)) {
+    alert(
+      "عذراً، خدمات التوصيل لدينا تقتصر حالياً على محافظة القاهرة الكبرى وضواحيها فقط.",
+    );
+    return;
+  }
 
   if (paymentMethod === "visa") {
     const ccNum = document.getElementById("cc-num").value;
@@ -2595,12 +2666,30 @@ function listenToOrders() {
               : { ...item, qty: item.orderedQuantity };
             return acc;
           }, {});
-          const itemsHtml = Object.values(grouped)
-            .map(
-              (i) =>
-                `<div class="flex justify-between text-xs text-slate-600 py-1.5 border-b border-slate-100 last:border-0"><span class="font-bold">${i.name} <span class="text-emerald-500 font-black mr-1">x${i.qty}</span></span><span>${i.price * i.qty} ج.م</span></div>`,
-            )
-            .join("");
+          const itemsHtml = `
+            <table class="w-full mt-2 text-xs text-slate-700 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                <thead class="bg-slate-100">
+                    <tr class="text-right">
+                        <th class="p-2 border-b border-slate-200">المنتج (فاتورة مبيعات)</th>
+                        <th class="p-2 border-b border-slate-200 text-center">الكمية</th>
+                        <th class="p-2 border-b border-slate-200 text-left">الإجمالي</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    ${Object.values(grouped)
+                      .map(
+                        (i) => `
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="p-2 font-bold">${i.productName} <span class="text-[10px] text-slate-400 font-normal mr-1">${i.selectedQuantityUnit ? `(${i.selectedQuantityUnit})` : ""}</span></td>
+                        <td class="p-2 text-center text-emerald-600 font-black" dir="ltr">${i.qty}</td>
+                        <td class="p-2 text-left font-bold text-slate-800">${Number(i.basePrice * i.qty).toFixed(2)} ج.م</td>
+                    </tr>
+                    `,
+                      )
+                      .join("")}
+                </tbody>
+            </table>
+          `;
 
           return `
             <div class="bg-white p-5 rounded-[2rem] border border-slate-100 card-shadow relative overflow-hidden">
@@ -2645,25 +2734,40 @@ function listenToOrders() {
       lucide.createIcons();
 
       // إشعارات للطلبات الجديدة
-      if (orders.length > lastOrdersCount) {
+      if (typeof window.isFirstAdminOrdersLoad === "undefined") {
+        window.isFirstAdminOrdersLoad = false;
+        lastOrdersCount = orders.length;
+      } else if (orders.length > lastOrdersCount) {
         const newOrdersCount = orders.length - lastOrdersCount;
-        document
-          .getElementById("admin-notification-badge")
-          .classList.remove("hidden");
-
-        // إنشاء إشعار في الـ notification panel
-        createNotification(
-          `🔔 ${newOrdersCount} طلب جديد!`,
-          `تم استقبال ${newOrdersCount} طلب جديد${newOrdersCount > 1 ? "" : ""}. يرجى مراجعة الطلبات.`,
-          "order",
-          "package",
-          "عرض الطلبات",
-          () => showTab("account"),
+        const newOrders = orders.slice(0, newOrdersCount);
+        const newOrdersFromOthers = newOrders.filter(
+          (o) => !currentUser || o.userId !== currentUser.uid,
         );
 
-        showToast(`🔔 ${newOrdersCount} طلب جديد!`, "info", 5000, () => {
-          showTab("account");
-        });
+        if (newOrdersFromOthers.length > 0) {
+          document
+            .getElementById("admin-notification-badge")
+            .classList.remove("hidden");
+
+          // إنشاء إشعار في الـ notification panel
+          createNotification(
+            `🔔 ${newOrdersFromOthers.length} طلب جديد!`,
+            `تم استقبال ${newOrdersFromOthers.length} طلب جديد. يرجى مراجعة الطلبات.`,
+            "order",
+            "package",
+            "عرض الطلبات",
+            () => showTab("account"),
+          );
+
+          showToast(
+            `🔔 ${newOrdersFromOthers.length} طلب جديد!`,
+            "info",
+            5000,
+            () => {
+              showTab("account");
+            },
+          );
+        }
       } else if (orders.length === 0) {
         document
           .getElementById("admin-notification-badge")
@@ -2715,12 +2819,30 @@ function loadUserOrders() {
               : { ...item, qty: item.orderedQuantity };
             return acc;
           }, {});
-          const itemsHtml = Object.values(grouped)
-            .map(
-              (item) =>
-                `<div class="flex justify-between text-[11px] text-slate-600 py-1.5 border-b border-slate-50 last:border-0"><span class="font-bold">${item.name} <span class="text-emerald-500 mx-1">x${item.qty}</span></span><span>${item.price * item.qty} ج.م</span></div>`,
-            )
-            .join("");
+          const itemsHtml = `
+            <table class="w-full mt-2 text-xs text-slate-700 bg-white border border-slate-100 rounded-xl overflow-hidden shadow-sm">
+                <thead class="bg-slate-50">
+                    <tr class="text-right">
+                        <th class="p-2 border-b border-slate-100">المنتج (فاتورة مبيعات)</th>
+                        <th class="p-2 border-b border-slate-100 text-center">الكمية</th>
+                        <th class="p-2 border-b border-slate-100 text-left">الإجمالي</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-50">
+                    ${Object.values(grouped)
+                      .map(
+                        (item) => `
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="p-2 font-bold">${item.productName} <span class="text-[10px] text-slate-400 font-normal mr-1">${item.selectedQuantityUnit ? `(${item.selectedQuantityUnit})` : ""}</span></td>
+                        <td class="p-2 text-center text-emerald-600 font-black" dir="ltr">${item.qty}</td>
+                        <td class="p-2 text-left font-bold text-slate-800">${Number(item.basePrice * item.qty).toFixed(2)} ج.م</td>
+                    </tr>
+                    `,
+                      )
+                      .join("")}
+                </tbody>
+            </table>
+          `;
 
           return `
             <div class="bg-white p-5 rounded-[2rem] border border-slate-100 text-right mb-4 card-shadow animate-fade-in-up stagger-delay-${(i % 4) + 1} w-full">
@@ -2768,45 +2890,55 @@ function loadUserOrders() {
         .join("");
       lucide.createIcons();
 
-      // إشعارات للطلبات الجديدة للمستخدم
-      if (myOrders.length > lastUserOrdersCount) {
-        const newOrdersCount = myOrders.length - lastUserOrdersCount;
-        if (newOrdersCount > 0) {
+      // تحديث حالة الطلبات وإرسال إشعار للمستخدم
+      if (typeof window.isFirstUserOrdersLoad === "undefined") {
+        window.isFirstUserOrdersLoad = false;
+        lastUserOrdersCount = myOrders.length;
+        window.lastUserOrderStatus = {};
+        myOrders.forEach((o) => (window.lastUserOrderStatus[o.id] = o.status));
+      } else {
+        if (myOrders.length > lastUserOrdersCount) {
           document
             .getElementById("user-orders-badge")
             .classList.remove("hidden");
-
-          // فحص الطلبات المؤكدة حديثاً
-          const confirmedOrders = myOrders.filter((o) => o.status === "مؤكد");
-          if (confirmedOrders.length > 0) {
-            createNotification(
-              "🎉 تم تأكيد طلبك!",
-              "تم التحقق من طلبك وسيتم إرساله قريباً. شكراً لتسوقك معنا!",
-              "success",
-              "check",
-              "عرض الطلب",
-              () => showTab("tracking"),
-            );
-
-            showToast(`🎉 تم تأكيد طلبك!`, "success", 5000, () => {
-              showTab("tracking");
-            });
-          } else {
-            // إشعار عام عند التحديث
-            createNotification(
-              "✅ تحديث حالة الطلب",
-              "تم تحديث حالة أحد طلباتك. اضغط هنا لعرض التفاصيل.",
-              "success",
-              "truck",
-              "عرض الطلبات",
-              () => showTab("tracking"),
-            );
-
-            showToast(`✅ تم تحديث حالة طلبك!`, "success", 4000, () => {
-              showTab("tracking");
-            });
-          }
+          lastUserOrdersCount = myOrders.length;
         }
+
+        myOrders.forEach((o) => {
+          if (
+            window.lastUserOrderStatus &&
+            window.lastUserOrderStatus[o.id] &&
+            window.lastUserOrderStatus[o.id] !== o.status
+          ) {
+            if (o.status === "مؤكد") {
+              createNotification(
+                "🎉 تم تأكيد طلبك!",
+                "تم التحقق من طلبك وسيتم تجهيزه للشحن قريباً. شكراً لتسوقك معنا!",
+                "success",
+                "check",
+                "عرض الطلب",
+                () => showTab("tracking"),
+              );
+              showToast("🎉 تم تأكيد طلبك!", "success", 5000, () =>
+                showTab("tracking"),
+              );
+            } else {
+              createNotification(
+                "✅ تحديث حالة الطلب",
+                `تم تحديث حالة طلبك إلى: ${o.status}`,
+                "info",
+                "truck",
+                "عرض الطلبات",
+                () => showTab("tracking"),
+              );
+              showToast(`✅ حالة طلبك الآن: ${o.status}`, "info", 4000, () =>
+                showTab("tracking"),
+              );
+            }
+          }
+          if (window.lastUserOrderStatus)
+            window.lastUserOrderStatus[o.id] = o.status;
+        });
       }
       lastUserOrdersCount = myOrders.length;
     },
@@ -3045,13 +3177,32 @@ function showToast(message, type = "success", duration = 4000, onClick = null) {
 ======================================================== */
 function toggleNotificationPanel() {
   const panel = document.getElementById("notification-panel");
+  const badge = document.getElementById("header-notification-badge");
+
   panel.classList.toggle("hidden");
+
   if (!panel.classList.contains("hidden")) {
     document.addEventListener("click", closeNotificationOnClickOutside);
+    if (badge) badge.classList.add("hidden");
+
+    // Mark all as read
+    let markedAny = false;
+    if (typeof notifications !== "undefined") {
+      notifications.forEach((n) => {
+        if (!n.read) {
+          n.read = true;
+          markedAny = true;
+        }
+      });
+      if (markedAny) {
+        updateNotificationPanel();
+        updateNotificationBadge();
+      }
+    }
   } else {
     document.removeEventListener("click", closeNotificationOnClickOutside);
   }
-  lucide.createIcons();
+  if (window.lucide) lucide.createIcons();
 }
 
 function closeNotificationOnClickOutside(e) {

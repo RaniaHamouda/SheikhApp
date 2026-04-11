@@ -7,6 +7,15 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
     <title>مدينة أولاد الشيخ - متجر الجملة</title>
+    
+    <!-- PWA Setup -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1B4332">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="أولاد الشيخ">
+    <link rel="apple-touch-icon" href="img/logo.png">
+
     <!-- Tailwind CSS CDN - For development only. In production, use PostCSS plugin or Tailwind CLI -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link
@@ -18,6 +27,15 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.172/pdf.min.js"></script>
     <link rel="stylesheet" href="css/styles.css" />
     <script src="js/chatbot.js" defer></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./service-worker.js')
+            .then(reg => console.log('Service Worker registered successfully.', reg.scope))
+            .catch(err => console.log('Service Worker registration failed:', err));
+        });
+      }
+    </script>
   </head>
   <body class="pb-24 transition-all duration-300">
     <!-- Header -->
@@ -43,7 +61,11 @@
           <input
             id="search-input"
             oninput="searchProducts(this.value)"
-            type="text"
+            type="search"
+            name="search_field_unique_name"
+            autocomplete="off"
+            readonly
+            onfocus="this.removeAttribute('readonly');"
             placeholder="ابحث عن منتج، قسم..."
             class="w-full bg-slate-50 border border-slate-200 rounded-full py-2.5 sm:py-3.5 pr-10 sm:pr-12 pl-4 focus:bg-white focus:border-[#1B4332] focus:ring-4 focus:ring-slate-100 outline-none text-xs sm:text-sm transition-all shadow-inner font-semibold text-slate-700"
           />
@@ -213,7 +235,7 @@
                 data-lucide="loader-2"
                 class="w-10 h-10 animate-spin text-emerald-500 mb-3"
               ></i>
-              <span class="font-bold">جاري تحميل المنتجات...</span>
+              <span class="font-bold">جاري تحميل المنتجات...  </span>
             </div>
           </div>
         </div>
@@ -234,22 +256,6 @@
           id="cart-summary"
           class="hidden bg-white p-6 rounded-[2rem] card-shadow border border-slate-100"
         >
-          <div
-            class="flex justify-between mb-3 text-slate-500 text-sm font-semibold"
-          >
-            <span>المجموع الفرعي:</span
-            ><span id="subtotal" class="font-bold text-slate-800">0 ج.م</span>
-          </div>
-          <div
-            class="flex justify-between mb-4 text-slate-500 text-sm font-semibold"
-          >
-            <span>رسوم التوصيل:</span
-            ><span
-              class="text-emerald-500 font-bold bg-emerald-50 px-2 py-0.5 rounded"
-              >مجاناً</span
-            >
-          </div>
-          <hr class="border-slate-100 mb-4" />
           <div class="flex justify-between mb-6 text-slate-800 items-end">
             <span class="font-black text-lg">الإجمالي:</span>
             <span id="total" class="font-black text-primary text-3xl"
@@ -489,7 +495,7 @@
               تسجيل الدخول
             </h2>
             <p class="text-slate-500 text-sm mt-2 font-semibold">
-              مرحباً بك في متجر الجملة
+              مرحباً بك في مدينه اولاد الشيخ متجر الجملة
             </p>
           </div>
           <div class="space-y-4">
@@ -622,7 +628,7 @@
               </h3>
               <div class="flex gap-2 flex-wrap">
                 <!-- Admin: Add New Admin -->
-                <div class="relative group">
+                <div class="relative group" id="add-admin-container">
                   <button
                     onclick="openAddAdminModal()"
                     class="bg-slate-100 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-slate-200 transition-colors flex items-center gap-1.5"
@@ -788,7 +794,7 @@
             id="p-cat"
             class="w-full p-4 bg-slate-50 rounded-2xl outline-none border border-transparent focus:border-emerald-300 focus:ring-4 focus:ring-emerald-50 font-bold text-sm text-slate-700"
           >
-            <option value="">-- القسم التابع له --</option>
+            <option value="">-- القسم التابع له--</option>
           </select>
         </div>
         <div>
@@ -815,7 +821,9 @@
               <option value="كيلو">كيلو</option>
               <option value="قطعة">قطعة</option>
               <option value="علبة">علبة</option>
-              <option value="صندوق">صندوق</option>
+              <option value="كرتونه">كرتونه</option>
+              <option value="شيكر">شيكر</option>
+              <option value="جردل">جردل</option>
             </select>
           </div>
           <div>
@@ -1019,13 +1027,13 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label class="text-[11px] font-bold text-slate-500 mb-1.5 block"
-              >اختر القسم</label
+              >اختر القسم (لتطبيق نسبة زيادة فقط)</label
             >
             <select
               id="bulk-price-cat"
               class="w-full p-4 bg-slate-50 rounded-2xl outline-none border border-transparent focus:border-amber-300 focus:ring-4 focus:ring-amber-50 font-bold text-sm text-slate-700"
             >
-              <option value="">-- اختر القسم --</option>
+              <option value="">-- كل الأقسام (لتحديث الملفات الشامل) --</option>
             </select>
           </div>
           <!-- New input for percentage increase -->
@@ -1369,7 +1377,7 @@
             id="chatbot-avatar"
             class="w-10 h-10 bg-white rounded-full flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden"
           >
-            👧
+          <!-- <img src="img/download (1).png" alt=""> -->
           </div>
           <div>
             <h3 id="chatbot-name" class="font-bold text-sm">هدي</h3>

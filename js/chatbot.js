@@ -294,7 +294,7 @@ function getSmartResponse(msg) {
     msg.includes("تلفون") ||
     msg.includes("رقم")
   ) {
-    return `يسعدنا تواصلك معنا! يمكنك الاتصال بخدمة العملاء مباشرة على: ${contactNumbers} أو زيارة فرعنا الرئيسي.`;
+    return `يسعدنا تواصلك معنا! يمكنك الاتصال بخدمة العملاء مباشرة على الأرقام: ${contactNumbers}. أو تواصل عبر الواتساب: <a href="https://wa.me/201033743734" target="_blank" class="text-blue-500 font-bold inline-flex items-center gap-1 hover:underline"><i data-lucide="message-circle" class="w-4 h-4"></i> واتساب 1</a> | <a href="https://wa.me/201063748966" target="_blank" class="text-blue-500 font-bold inline-flex items-center gap-1 hover:underline"><i data-lucide="message-circle" class="w-4 h-4"></i> واتساب 2</a>`;
   }
 
   // 7. جودة المنتجات
@@ -309,9 +309,9 @@ function getSmartResponse(msg) {
 
   // 9. الرد عند عدم الفهم (مع الأرقام المطلوبة)
   const fallbacks = [
-    `عذراً، لم أفهم طلبك جيداً. 🤔 يمكنك التواصل مع خدمة العملاء مباشرة لمساعدتك على الأرقام: ${contactNumbers}`,
-    `لست متأكدة مما تقصده، لكن يمكنك دائماً التحدث مع الإدارة هاتفياً على: ${contactNumbers}`,
-    `آسفة، لم أستطع العثور على إجابة لهذا السؤال. يمكنك الاتصال بنا على ${contactNumbers} وسيقوم أحد زملائي بمساعدتك فوراً.`,
+    `عذراً، لم أفهم طلبك جيداً. 🤔 يمكنك التواصل مع خدمة العملاء مباشرة لمساعدتك عبر الاتصال أو <a href="https://wa.me/201033743734" target="_blank" class="text-blue-500 font-bold inline-flex items-center hover:underline">الواتساب</a>.`,
+    `لدينا فريق مخصص للرد على استفساراتك المتقدمة. يرجى مراسلة خدمة العملاء على الواتساب: <br><br><a href="https://wa.me/201063748966" target="_blank" class="bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg font-bold border border-emerald-100 flex items-center justify-center gap-1"><i data-lucide="message-circle" class="w-4 h-4"></i> تواصل عبر واتساب</a>`,
+    `آسفة، لم أستطع العثور على إجابة لهذا السؤال. يمكنك الاتصال بنا على ${contactNumbers} وسيقوم أحد زملائي بمساعدتك فوراً، أو راسلنا <a href="https://wa.me/201033743734" target="_blank" class="text-blue-500 font-bold hover:underline">هنا على واتساب</a>.`,
   ];
 
   return fallbacks[Math.floor(Math.random() * fallbacks.length)];
